@@ -29,22 +29,24 @@ st.markdown("""
 
 html, body, [class*="css"] {
     font-family: 'DM Sans', sans-serif;
+    color: #1a1a1a;
 }
 
-.main { background: #0a0e1a; }
-[data-testid="stAppViewContainer"] { background: #0a0e1a; }
-[data-testid="stSidebar"] { background: #0d1220; border-right: 1px solid #1e2a40; }
+.main { background: #ffffff; }
+[data-testid="stAppViewContainer"] { background: #ffffff; }
+[data-testid="stSidebar"] { background: #f8f9fa; border-right: 1px solid #e0e0e0; }
 
-h1, h2, h3 { font-family: 'DM Serif Display', serif !important; }
+h1, h2, h3 { font-family: 'DM Serif Display', serif !important; color: #1a1a1a !important; }
 
 .metric-card {
-    background: linear-gradient(135deg, #0d1220 0%, #111827 100%);
-    border: 1px solid #1e2a40;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 12px;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.02);
 }
 .metric-card::before {
     content: '';
@@ -58,17 +60,17 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif !important; }
 .metric-card.blue::before  { background: linear-gradient(90deg, #2979ff, #82b1ff); }
 
 .fund-row {
-    background: #0d1220;
-    border: 1px solid #1e2a40;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
     border-radius: 10px;
     padding: 16px 20px;
     margin-bottom: 8px;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
 }
-.fund-row:hover { border-color: #2979ff; }
+.fund-row:hover { border-color: #2979ff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
 .fund-row.selected {
     border-color: #00c853;
-    background: linear-gradient(135deg, #0d1a14 0%, #0d1220 100%);
+    background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%);
 }
 
 .peso-bar-container {
@@ -100,10 +102,10 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif !important; }
 .section-title {
     font-family: 'DM Serif Display', serif;
     font-size: 22px;
-    color: #e8eaf6;
+    color: #1a1a1a;
     margin: 24px 0 16px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid #1e2a40;
+    border-bottom: 1px solid #e0e0e0;
 }
 
 .stButton > button {
@@ -123,8 +125,8 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif !important; }
 }
 
 div[data-testid="metric-container"] {
-    background: #0d1220;
-    border: 1px solid #1e2a40;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
     border-radius: 10px;
     padding: 12px;
 }
@@ -132,13 +134,13 @@ div[data-testid="metric-container"] {
 .stDataFrame { background: transparent !important; }
 
 .info-box {
-    background: #0d1a2e;
-    border: 1px solid #1e3a5f;
+    background: #f0f7ff;
+    border: 1px solid #cce3ff;
     border-left: 3px solid #2979ff;
     border-radius: 8px;
     padding: 12px 16px;
     font-size: 13px;
-    color: #90a4ae;
+    color: #455a64;
     margin: 12px 0;
     line-height: 1.6;
 }
@@ -156,8 +158,10 @@ FONDOS_DEFAULT = {
     "LU1963720757": "Nordea BetaPlus Glb",
     "LU1372006947": "Cobas Lux Selec",
     "LU0996177134": "Amundi MSCI EM",
+    "LU0947062542": "SCHRODER EM MARKETS A ACC",
 }
 MONETARIO_ISIN   = "LU0423950210"
+BENCHMARK_ISIN   = "LU0996182563" # MSCI World como benchmark para Alfa/Beta
 MONETARIO_NOMBRE = "BNP EUR 3M"
 
 COLORES = ["#2979ff","#00c853","#ffa000","#e91e63","#00bcd4","#9c27b0","#ff5722"]
@@ -224,6 +228,52 @@ def calcular_max_drawdown(nav: pd.Series, dias: int = 252) -> float | None:
     except:
         return None
 
+def calcular_sharpe_ratio(nav: pd.Series, risk_free_nav: pd.Series, dias: int = 252) -> float | None:
+    try:
+        if len(nav) < 63 or risk_free_nav is None:
+            return None
+        # Alinear fechas
+        idx_comun = nav.index.intersection(risk_free_nav.index)
+        if len(idx_comun) < 20: return None
+        
+        returns = nav.loc[idx_comun].pct_change().dropna()
+        rf_returns = risk_free_nav.loc[idx_comun].pct_change().dropna()
+        
+        excess_returns = returns - rf_returns
+        if len(excess_returns) == 0: return None
+        
+        mu = excess_returns.mean() * 252
+        sigma = excess_returns.std() * np.sqrt(252)
+        
+        return round(float(mu / sigma), 2) if sigma > 0 else 0.0
+    except:
+        return None
+
+def calcular_alfa_beta(nav: pd.Series, benchmark_nav: pd.Series, risk_free_nav: pd.Series, dias: int = 252) -> tuple[float | None, float | None]:
+    try:
+        if len(nav) < 63 or benchmark_nav is None or risk_free_nav is None:
+            return None, None
+            
+        # Alinear fechas
+        idx_comun = nav.index.intersection(benchmark_nav.index).intersection(risk_free_nav.index)
+        if len(idx_comun) < 20: return None, None
+        
+        r = nav.loc[idx_comun].pct_change().dropna()
+        rb = benchmark_nav.loc[idx_comun].pct_change().dropna()
+        rf = risk_free_nav.loc[idx_comun].pct_change().dropna()
+        
+        y = r - rf
+        x = rb - rf
+        
+        # Beta = Cov(y, x) / Var(x)
+        beta = np.cov(y, x)[0, 1] / np.var(x)
+        # Alfa (anualizado) = (Return - [Rf + Beta * (Benchmark - Rf)]) * 252
+        alfa = (y.mean() - beta * x.mean()) * 252 * 100
+        
+        return round(float(alfa), 2), round(float(beta), 2)
+    except:
+        return None, None
+
 def calcular_pesos(candidatos: list, mom_monetario: float, max_peso: float) -> list:
     if not candidatos:
         return []
@@ -259,6 +309,7 @@ def analizar_fondos(fondos: dict, mom_meses: int, max_peso: float) -> dict:
     """Descarga datos y aplica Dual Momentum con pesos."""
     resultados = {}
     nav_mon = descargar_nav(MONETARIO_ISIN)
+    nav_ben = descargar_nav(BENCHMARK_ISIN)
     mom_mon = calcular_momentum(nav_mon, mom_meses) if nav_mon is not None else 0.0
 
     for isin, nombre in fondos.items():
@@ -267,14 +318,16 @@ def analizar_fondos(fondos: dict, mom_meses: int, max_peso: float) -> dict:
             resultados[isin] = {
                 'isin': isin, 'nombre': nombre, 'nav': None,
                 'momentum_12m': None, 'sma_info': {}, 'volatilidad': None,
-                'max_drawdown': None, 'estado': 'sin_datos', 'peso': 0.0,
-                'mom_relativo': 0.0,
+                'max_drawdown': None, 'sharpe': None, 'alfa': None, 'beta': None,
+                'estado': 'sin_datos', 'peso': 0.0, 'mom_relativo': 0.0,
             }
             continue
         mom      = calcular_momentum(nav, mom_meses)
         sma_info = calcular_sma200(nav)
         vol      = calcular_volatilidad(nav)
         dd       = calcular_max_drawdown(nav)
+        sharpe   = calcular_sharpe_ratio(nav, nav_mon)
+        alfa, beta = calcular_alfa_beta(nav, nav_ben, nav_mon)
 
         if mom is None:
             estado = 'sin_datos'
@@ -289,6 +342,7 @@ def analizar_fondos(fondos: dict, mom_meses: int, max_peso: float) -> dict:
             'isin': isin, 'nombre': nombre, 'nav': nav,
             'momentum_12m': mom, 'sma_info': sma_info,
             'volatilidad': vol, 'max_drawdown': dd,
+            'sharpe': sharpe, 'alfa': alfa, 'beta': beta,
             'estado': estado, 'peso': 0.0, 'mom_relativo': 0.0,
         }
 
@@ -371,14 +425,14 @@ def grafico_nav(fondo: dict, nav_monetario: pd.Series | None, mostrar_sma: bool)
             ))
 
     fig.update_layout(
-        template='plotly_dark',
+        template='plotly_white',
         paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(13,18,32,0.8)',
+        plot_bgcolor='rgba(248,249,250,0.8)',
         height=320,
         margin=dict(t=20, b=20, l=0, r=0),
         legend=dict(orientation='h', y=1.05, font=dict(size=11)),
-        xaxis=dict(gridcolor='#1e2a40', showgrid=True),
-        yaxis=dict(gridcolor='#1e2a40', showgrid=True, title='Base 100'),
+        xaxis=dict(gridcolor='#e0e0e0', showgrid=True),
+        yaxis=dict(gridcolor='#e0e0e0', showgrid=True, title='Base 100'),
         hovermode='x unified'
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -408,12 +462,12 @@ def grafico_momentum_comparativo(todos: list, mom_monetario: float):
                   annotation_text=f"Umbral: {mom_monetario:.1f}%",
                   annotation_font_color='#ffa000')
     fig.update_layout(
-        template='plotly_dark',
+        template='plotly_white',
         paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(13,18,32,0.8)',
+        plot_bgcolor='rgba(248,249,250,0.8)',
         height=300,
         margin=dict(t=20, b=20, l=0, r=80),
-        xaxis=dict(gridcolor='#1e2a40', title='Rentabilidad 12 meses (%)'),
+        xaxis=dict(gridcolor='#e0e0e0', title='Rentabilidad 12 meses (%)'),
         yaxis=dict(gridcolor='rgba(0,0,0,0)'),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -437,10 +491,10 @@ def grafico_tarta_cartera(candidatos: list, peso_monetario: float):
         hole=0.5,
     ))
     fig.add_annotation(text=f"{len(candidatos)}<br>fondos", x=0.5, y=0.5,
-                       font=dict(size=16, color='#e8eaf6', family='DM Serif Display'),
+                       font=dict(size=16, color='#1a1a1a', family='DM Serif Display'),
                        showarrow=False)
     fig.update_layout(
-        template='plotly_dark',
+        template='plotly_white',
         paper_bgcolor='rgba(0,0,0,0)',
         height=300,
         margin=dict(t=20, b=20, l=0, r=0),
@@ -456,7 +510,7 @@ def grafico_tarta_cartera(candidatos: list, peso_monetario: float):
 with st.sidebar:
     st.markdown("""
     <div style="text-align:center;padding:20px 0 24px">
-      <div style="font-family:'DM Serif Display',serif;font-size:26px;color:#e8eaf6">
+      <div style="font-family:'DM Serif Display',serif;font-size:26px;color:#1a1a1a">
         Dual Momentum
       </div>
       <div style="font-size:12px;color:#546e7a;margin-top:4px;letter-spacing:1px">
@@ -517,7 +571,7 @@ with st.sidebar:
 st.markdown("""
 <div style="padding:32px 0 24px">
   <div style="font-family:'DM Serif Display',serif;font-size:42px;
-              color:#e8eaf6;line-height:1.1">
+              color:#1a1a1a;line-height:1.1">
     Dual Momentum
     <span style="color:#2979ff">Fondos</span>
   </div>
@@ -543,293 +597,365 @@ with col_info:
     """, unsafe_allow_html=True)
 
 # =============================================================================
-# ANÁLISIS Y RESULTADOS
+# TABS PRINCIPALES
 # =============================================================================
 
-if analizar:
-    with st.spinner("Descargando NAV histórico desde Morningstar..."):
-        try:
-            import mstarpy
-        except ImportError:
-            st.error("❌ Instala mstarpy: `pip install mstarpy`")
-            st.stop()
+tab_dash, tab_doc = st.tabs(["📊 Dashboard de Cartera", "📖 Guía y Metodología"])
 
-        progreso = st.progress(0, text="Iniciando descarga...")
-        total = len(fondos_custom) + 1
-        paso  = 0
+with tab_dash:
+    if analizar:
+        with st.spinner("Descargando NAV histórico desde Morningstar..."):
+            try:
+                import mstarpy
+            except ImportError:
+                st.error("❌ Instala mstarpy: `pip install mstarpy`")
+                st.stop()
 
-        # Forzar descarga secuencial mostrando progreso
-        progreso.progress(paso / total, text=f"Descargando {MONETARIO_NOMBRE}...")
-        descargar_nav(MONETARIO_ISIN)
-        paso += 1
+            progreso = st.progress(0, text="Iniciando descarga...")
+            total = len(fondos_custom) + 1
+            paso  = 0
 
-        for isin, nombre in fondos_custom.items():
-            progreso.progress(paso / total, text=f"Descargando {nombre}...")
-            descargar_nav(isin)
+            # Forzar descarga secuencial mostrando progreso
+            progreso.progress(paso / total, text=f"Descargando {MONETARIO_NOMBRE}...")
+            descargar_nav(MONETARIO_ISIN)
             paso += 1
 
-        progreso.empty()
+            for isin, nombre in fondos_custom.items():
+                progreso.progress(paso / total, text=f"Descargando {nombre}...")
+                descargar_nav(isin)
+                paso += 1
 
-        resultados = analizar_fondos(fondos_custom, mom_meses, max_peso_pct / 100)
-        st.session_state['resultados']   = resultados
-        st.session_state['fondos_analizados'] = fondos_custom
+            progreso.empty()
 
-elif 'resultados' in st.session_state:
-    resultados = st.session_state['resultados']
-    fondos_custom = st.session_state.get('fondos_analizados', fondos_custom)
+            resultados = analizar_fondos(fondos_custom, mom_meses, max_peso_pct / 100)
+            st.session_state['resultados']   = resultados
+            st.session_state['fondos_analizados'] = fondos_custom
 
-if 'resultados' not in st.session_state:
+    elif 'resultados' in st.session_state:
+        resultados = st.session_state['resultados']
+        fondos_custom = st.session_state.get('fondos_analizados', fondos_custom)
+
+    if 'resultados' not in st.session_state:
+        st.markdown("""
+        <div style="text-align:center;padding:60px 20px;color:#37474f">
+          <div style="font-size:48px;margin-bottom:16px">📊</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#546e7a">
+            Pulsa "Analizar Cartera" para empezar
+          </div>
+          <div style="font-size:13px;margin-top:8px">
+            Descargará el historial de NAV de todos los fondos y calculará el reparto óptimo
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+    # ── Datos disponibles ─────────────────────────────────────────────────────────
+    res          = st.session_state['resultados']
+    candidatos   = res['candidatos']
+    no_cands     = res['no_candidatos']
+    todos        = res['todos']
+    mom_mon      = res['mom_monetario']
+    peso_mon     = res['peso_monetario']
+    nav_mon      = res['nav_monetario']
+
+    # =============================================================================
+    # MÉTRICAS RESUMEN
+    # =============================================================================
+
+    st.markdown(f'<div class="section-title">Resumen — {res["fecha"]}</div>', unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        tipo = "green" if candidatos else "red"
+        st.markdown(f"""
+        <div class="metric-card {tipo}">
+          <div style="font-size:12px;color:#546e7a;letter-spacing:1px">FONDOS EN CARTERA</div>
+          <div style="font-size:36px;font-weight:600;color:#1a1a1a;margin:6px 0">{len(candidatos)}</div>
+          <div style="font-size:12px;color:#546e7a">de {len(todos)} analizados</div>
+        </div>""", unsafe_allow_html=True)
+
+    with col2:
+        rec_nombre = candidatos[0]['nombre'] if candidatos else MONETARIO_NOMBRE
+        rec_peso   = int(candidatos[0]['peso'] * 100) if candidatos else int(peso_mon * 100)
+        st.markdown(f"""
+        <div class="metric-card blue">
+          <div style="font-size:12px;color:#546e7a;letter-spacing:1px">POSICIÓN PRINCIPAL</div>
+          <div style="font-size:18px;font-weight:600;color:#1565c0;margin:6px 0">{rec_nombre}</div>
+          <div style="font-size:24px;font-weight:700;color:#1a1a1a">{rec_peso}%</div>
+        </div>""", unsafe_allow_html=True)
+
+    with col3:
+        mom_top = candidatos[0]['momentum_12m'] if candidatos else None
+        mom_str = f"{mom_top:+.1f}%" if mom_top is not None else "—"
+        color_m = "#00c853" if (mom_top or 0) > 0 else "#ff5252"
+        st.markdown(f"""
+        <div class="metric-card {'green' if (mom_top or 0) > 0 else 'red'}">
+          <div style="font-size:12px;color:#546e7a;letter-spacing:1px">MEJOR MOMENTUM 12M</div>
+          <div style="font-size:36px;font-weight:600;color:{color_m};margin:6px 0">{mom_str}</div>
+          <div style="font-size:12px;color:#546e7a">{candidatos[0]['nombre'] if candidatos else '—'}</div>
+        </div>""", unsafe_allow_html=True)
+
+    with col4:
+        n_excluidos = len([f for f in no_cands if f['estado'] != 'sin_datos'])
+        tipo_exc = "amber" if n_excluidos > 0 else "green"
+        st.markdown(f"""
+        <div class="metric-card {tipo_exc}">
+          <div style="font-size:12px;color:#546e7a;letter-spacing:1px">FONDOS EXCLUIDOS</div>
+          <div style="font-size:36px;font-weight:600;color:#f57c00;margin:6px 0">{n_excluidos}</div>
+          <div style="font-size:12px;color:#546e7a">al refugio monetario</div>
+        </div>""", unsafe_allow_html=True)
+
+    # =============================================================================
+    # REPARTO DE CARTERA
+    # =============================================================================
+
+    st.markdown('<div class="section-title">Reparto de Cartera</div>', unsafe_allow_html=True)
+
+    col_tarta, col_barras = st.columns([1, 2])
+
+    with col_tarta:
+        grafico_tarta_cartera(candidatos, peso_mon)
+
+    with col_barras:
+        st.markdown("**Desglose por fondo**")
+        all_asignados = list(candidatos)
+        if peso_mon > 0:
+            all_asignados.append({
+                'nombre': MONETARIO_NOMBRE, 'peso': peso_mon,
+                'momentum_12m': mom_mon, 'mom_relativo': 0, 'isin': MONETARIO_ISIN
+            })
+
+        for i, fondo in enumerate(all_asignados):
+            pct    = int(fondo['peso'] * 100)
+            color  = COLORES[i % len(COLORES)] if fondo['isin'] != MONETARIO_ISIN else '#546e7a'
+            mom_r  = fondo.get('mom_relativo', 0)
+            mom_str = f"{fondo['momentum_12m']:+.1f}%" if fondo['momentum_12m'] is not None else "—"
+
+            col_n, col_p, col_m = st.columns([3, 1, 1])
+            with col_n:
+                st.markdown(f"<span style='color:#1a1a1a;font-size:14px'>{fondo['nombre']}</span>",
+                            unsafe_allow_html=True)
+                render_barra_peso(pct, color)
+            with col_p:
+                st.markdown(f"<span style='font-size:22px;font-weight:700;color:{color}'>{pct}%</span>",
+                            unsafe_allow_html=True)
+            with col_m:
+                mc = "#00c853" if (fondo['momentum_12m'] or 0) > mom_mon else "#546e7a"
+                st.markdown(f"<span style='font-size:13px;color:{mc}'>{mom_str}</span>",
+                            unsafe_allow_html=True)
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="info-box" style="margin-top:12px">
+        Pesos proporcionales al momentum relativo vs {MONETARIO_NOMBRE} ({mom_mon:.1f}%).
+        Tope máximo: {max_peso_pct}% por fondo. Redondeo al 5% más cercano.
+        </div>
+        """, unsafe_allow_html=True)
+
+    # =============================================================================
+    # MOMENTUM COMPARATIVO
+    # =============================================================================
+
+    st.markdown('<div class="section-title">Momentum 12 Meses — Comparativa</div>',
+                unsafe_allow_html=True)
+    grafico_momentum_comparativo(todos, mom_mon)
+
+    # =============================================================================
+    # TABLA DETALLE DE FONDOS
+    # =============================================================================
+
+    st.markdown('<div class="section-title">Detalle de Fondos</div>', unsafe_allow_html=True)
+
+    for fondo in todos:
+        estado  = fondo['estado']
+        sma_i   = fondo.get('sma_info', {})
+        peso    = fondo.get('peso', 0)
+        mom     = fondo.get('momentum_12m')
+        vol     = fondo.get('volatilidad')
+        dd      = fondo.get('max_drawdown')
+        sha     = fondo.get('sharpe')
+        alf     = fondo.get('alfa')
+        bet     = fondo.get('beta')
+
+        es_seleccionado = estado == 'candidato'
+        clase = "fund-row selected" if es_seleccionado else "fund-row"
+
+        if estado == 'candidato':
+            estado_html = f'<span class="badge badge-green">✅ En cartera {int(peso*100)}%</span>'
+        elif estado == 'bajo_sma200':
+            estado_html = '<span class="badge badge-red">📉 Bajo SMA200</span>'
+        elif estado == 'monetario':
+            estado_html = '<span class="badge badge-amber">🛡️ No supera monetario</span>'
+        else:
+            estado_html = '<span class="badge badge-gray">⚠️ Sin datos</span>'
+
+        sma_color = "#00c853" if sma_i.get('sobre_sma', True) else "#ff5252"
+        sma_str   = f"{sma_i.get('dist_sma', 0):+.1f}%" if sma_i.get('sma200') else "—"
+        mom_color = "#00c853" if (mom or 0) > mom_mon else "#ff5252"
+        mom_str   = f"{mom:+.1f}%" if mom is not None else "—"
+        vol_str   = f"{vol:.0f}%" if vol else "—"
+        dd_str    = f"{dd:.1f}%" if dd else "—"
+        sha_str   = f"{sha:.2f}" if sha is not None else "—"
+        alf_str   = f"{alf:+.1f}%" if alf is not None else "—"
+        bet_str   = f"{bet:.2f}" if bet is not None else "—"
+        nav_str   = f"{sma_i.get('nav_actual', 0):.4f}" if sma_i.get('nav_actual') else "—"
+
+        st.markdown(f"""
+        <div class="{clase}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+            <div style="flex: 1; min-width: 250px;">
+              <span style="font-size:16px;font-weight:600;color:#1a1a1a">{fondo['nombre']}</span>
+              <span style="font-size:11px;color:#757575;margin-left:8px">{fondo['isin']}</span>
+              <div style="margin-top:6px">{estado_html}</div>
+            </div>
+            <div style="display:flex;gap:18px;flex-wrap:wrap; justify-content: flex-end;">
+              <div style="text-align:center; min-width: 65px;">
+                <div style="font-size:10px;color:#546e7a">Mom. 12m</div>
+                <div style="font-size:16px;font-weight:700;color:{mom_color}">{mom_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 65px;">
+                <div style="font-size:10px;color:#546e7a">Dist. SMA200</div>
+                <div style="font-size:16px;font-weight:700;color:{sma_color}">{sma_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 60px;">
+                <div style="font-size:10px;color:#546e7a">Ratio Sharpe</div>
+                <div style="font-size:16px;font-weight:700;color:#82b1ff">{sha_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 45px;">
+                <div style="font-size:10px;color:#546e7a">Alfa (an.)</div>
+                <div style="font-size:16px;font-weight:700;color:#00c853">{alf_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 45px;">
+                <div style="font-size:10px;color:#546e7a">Beta</div>
+                <div style="font-size:16px;font-weight:700;color:#ffa000">{bet_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 55px;">
+                <div style="font-size:10px;color:#546e7a">Vol. anual</div>
+                <div style="font-size:16px;font-weight:700;color:#90a4ae">{vol_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 55px;">
+                <div style="font-size:10px;color:#546e7a">Max DD</div>
+                <div style="font-size:16px;font-weight:700;color:#ef9a9a">{dd_str}</div>
+              </div>
+              <div style="text-align:center; min-width: 65px;">
+                <div style="font-size:10px;color:#546e7a">NAV actual</div>
+                <div style="font-size:16px;font-weight:700;color:#1a1a1a">{nav_str}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # =============================================================================
+    # GRÁFICOS NAV INDIVIDUALES
+    # =============================================================================
+
+    st.markdown('<div class="section-title">Evolución del NAV</div>', unsafe_allow_html=True)
+
+    fondos_con_datos = [f for f in todos if f['nav'] is not None]
+    if fondos_con_datos:
+        fondo_sel = st.selectbox(
+            "Seleccionar fondo",
+            options=[f['isin'] for f in fondos_con_datos],
+            format_func=lambda x: next((f['nombre'] for f in fondos_con_datos if f['isin'] == x), x),
+            key="sel_fondo_nav"
+        )
+        fondo_data = next(f for f in fondos_con_datos if f['isin'] == fondo_sel)
+        grafico_nav(fondo_data, nav_mon, mostrar_sma)
+
+        # Mostrar evolución multi-fondo normalizada
+        st.markdown("**Comparativa todos los fondos (base 100)**")
+        fig_multi = go.Figure()
+        for i, f in enumerate(fondos_con_datos):
+            nav = f['nav']
+            nav_norm = nav / nav.iloc[0] * 100
+            color = COLORES[i % len(COLORES)]
+            dash  = 'solid' if f['estado'] == 'candidato' else 'dot'
+            fig_multi.add_trace(go.Scatter(
+                x=nav_norm.index[-252:], y=nav_norm.values[-252:],
+                name=f['nombre'],
+                line=dict(color=color, width=2 if f['estado'] == 'candidato' else 1, dash=dash),
+                hovertemplate=f"{f['nombre']}: %{{y:.1f}}<extra></extra>"
+            ))
+        if nav_mon is not None:
+            mon_norm = nav_mon / nav_mon.iloc[0] * 100
+            fig_multi.add_trace(go.Scatter(
+                x=mon_norm.index[-252:], y=mon_norm.values[-252:],
+                name=MONETARIO_NOMBRE,
+                line=dict(color='#546e7a', width=1, dash='dot'),
+                hovertemplate=f"Monetario: %{{y:.1f}}<extra></extra>"
+            ))
+        fig_multi.update_layout(
+            template='plotly_white',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(248,249,250,0.8)',
+            height=350,
+            margin=dict(t=20, b=20, l=0, r=0),
+            xaxis=dict(gridcolor='#e0e0e0'),
+            yaxis=dict(gridcolor='#e0e0e0', title='Base 100'),
+            legend=dict(orientation='h', y=1.08, font=dict(size=11)),
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_multi, use_container_width=True)
+
+with tab_doc:
+    st.markdown('<div class="section-title">Metodología Dual Momentum</div>', unsafe_allow_html=True)
+    
     st.markdown("""
-    <div style="text-align:center;padding:60px 20px;color:#37474f">
-      <div style="font-size:48px;margin-bottom:16px">📊</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#546e7a">
-        Pulsa "Analizar Cartera" para empezar
-      </div>
-      <div style="font-size:13px;margin-top:8px">
-        Descargará el historial de NAV de todos los fondos y calculará el reparto óptimo
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+    La estrategia de **Dual Momentum**, popularizada por Gary Antonacci, combina dos tipos de momentum para maximizar el retorno y minimizar el riesgo:
+    
+    1.  **Momentum Relativo**: Compara varios activos entre sí y selecciona los que han tenido mejor comportamiento reciente. En esta app, los fondos compiten por un puesto en la cartera según su rentabilidad a 12 meses.
+    2.  **Momentum Absoluto**: Actúa como un interruptor de seguridad. Si los activos analizados no baten la rentabilidad de un activo refugio (el monetario) o están en tendencia bajista, el capital se refugia en liquidez.
+    
+    ### Criterios de Selección
+    Un fondo entra en cartera balanceada solo si cumple **todas** estas condiciones:
+    - **Positivo vs Monetario**: Su rentabilidad a 12 meses debe ser superior a la del fondo monetario.
+    - **Filtro de Tendencia (SMA200)**: El precio (NAV) actual debe estar por encima de su media móvil de 200 días.
+    """)
+    
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        st.info("#### ⚙️ Parámetros de Control\\n"
+                "- **Ventana de Momentum**: Periodo de tiempo (meses) para calcular la rentabilidad. El estándar es 12 meses.\\n"
+                "- **Peso Máximo**: Límite de concentración para evitar que un solo fondo domine la cartera.\\n"
+                "- **Rebalanceo**: El sistema calcula pesos automáticos basados en el exceso de momentum sobre el monetario.")
+    
+    with col_d2:
+        st.info("#### �️ Filtros de Seguridad\n"
+                "- **SMA200**: Media móvil de los últimos 200 días. Si el precio está por debajo, el fondo se considera en tendencia bajista y se excluye.\n"
+                "- **Umbral Monetario**: Si la rentabilidad del fondo es menor a la del monetario, no compensa el riesgo y se refugia en liquidez.")
 
-# ── Datos disponibles ─────────────────────────────────────────────────────────
-res          = st.session_state['resultados']
-candidatos   = res['candidatos']
-no_cands     = res['no_candidatos']
-todos        = res['todos']
-mom_mon      = res['mom_monetario']
-peso_mon     = res['peso_monetario']
-nav_mon      = res['nav_monetario']
+    st.markdown("""
+    ### 📚 Glosario de Métricas
+    Para entender mejor los datos del Dashboard e información técnica:
+    
+    | Métrica | Definición |
+    | :--- | :--- |
+    | **Mom. 12m** | **Momentum a 12 meses**: Rentabilidad total del fondo en el último año. Diferencia porcentual entre el NAV actual y el de hace un año. |
+    | **Dist. SMA200** | **Distancia a la Media**: Porcentaje que separa al precio actual de su media móvil de 200 días. Indica la tendencia de largo plazo. |
+    | **Ratio Sharpe** | **Eficiencia**: Indica cuánto retorno extra genera el fondo por cada unidad de volatilidad. > 1.0 es considerado excelente. |
+    | **Alfa (an.)** | **Exceso de Retorno**: Rentabilidad adicional que el fondo consigue frente a su índice de referencia (MSCI World). |
+    | **Beta** | **Sensibilidad**: Mide cuánto se mueve el fondo respecto al mercado. Beta 1.0 = igual al mercado. |
+    | **Vol. anual** | **Volatilidad**: Intensidad de las oscilaciones del fondo. Refleja el riesgo o variabilidad de los retornos. |
+    | **Max DD** | **Máxima Caída**: La mayor caída histórica desde un pico. Indica el riesgo de pérdida temporal máxima sufrida. |
+    | **NAV actual** | **Precio/V. Liquidativo**: Precio de una participación del fondo a día de hoy. |
 
-# =============================================================================
-# MÉTRICAS RESUMEN
-# =============================================================================
-
-st.markdown(f'<div class="section-title">Resumen — {res["fecha"]}</div>', unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    tipo = "green" if candidatos else "red"
-    st.markdown(f"""
-    <div class="metric-card {tipo}">
-      <div style="font-size:12px;color:#546e7a;letter-spacing:1px">FONDOS EN CARTERA</div>
-      <div style="font-size:36px;font-weight:600;color:#e8eaf6;margin:6px 0">{len(candidatos)}</div>
-      <div style="font-size:12px;color:#546e7a">de {len(todos)} analizados</div>
-    </div>""", unsafe_allow_html=True)
-
-with col2:
-    rec_nombre = candidatos[0]['nombre'] if candidatos else MONETARIO_NOMBRE
-    rec_peso   = int(candidatos[0]['peso'] * 100) if candidatos else int(peso_mon * 100)
-    st.markdown(f"""
-    <div class="metric-card blue">
-      <div style="font-size:12px;color:#546e7a;letter-spacing:1px">POSICIÓN PRINCIPAL</div>
-      <div style="font-size:18px;font-weight:600;color:#82b1ff;margin:6px 0">{rec_nombre}</div>
-      <div style="font-size:24px;font-weight:700;color:#e8eaf6">{rec_peso}%</div>
-    </div>""", unsafe_allow_html=True)
-
-with col3:
-    mom_top = candidatos[0]['momentum_12m'] if candidatos else None
-    mom_str = f"{mom_top:+.1f}%" if mom_top is not None else "—"
-    color_m = "#00c853" if (mom_top or 0) > 0 else "#ff5252"
-    st.markdown(f"""
-    <div class="metric-card {'green' if (mom_top or 0) > 0 else 'red'}">
-      <div style="font-size:12px;color:#546e7a;letter-spacing:1px">MEJOR MOMENTUM 12M</div>
-      <div style="font-size:36px;font-weight:600;color:{color_m};margin:6px 0">{mom_str}</div>
-      <div style="font-size:12px;color:#546e7a">{candidatos[0]['nombre'] if candidatos else '—'}</div>
-    </div>""", unsafe_allow_html=True)
-
-with col4:
-    n_excluidos = len([f for f in no_cands if f['estado'] != 'sin_datos'])
-    tipo_exc = "amber" if n_excluidos > 0 else "green"
-    st.markdown(f"""
-    <div class="metric-card {tipo_exc}">
-      <div style="font-size:12px;color:#546e7a;letter-spacing:1px">FONDOS EXCLUIDOS</div>
-      <div style="font-size:36px;font-weight:600;color:#ffd740;margin:6px 0">{n_excluidos}</div>
-      <div style="font-size:12px;color:#546e7a">al refugio monetario</div>
-    </div>""", unsafe_allow_html=True)
-
-# =============================================================================
-# REPARTO DE CARTERA
-# =============================================================================
-
-st.markdown('<div class="section-title">Reparto de Cartera</div>', unsafe_allow_html=True)
-
-col_tarta, col_barras = st.columns([1, 2])
-
-with col_tarta:
-    grafico_tarta_cartera(candidatos, peso_mon)
-
-with col_barras:
-    st.markdown("**Desglose por fondo**")
-    all_asignados = list(candidatos)
-    if peso_mon > 0:
-        all_asignados.append({
-            'nombre': MONETARIO_NOMBRE, 'peso': peso_mon,
-            'momentum_12m': mom_mon, 'mom_relativo': 0, 'isin': MONETARIO_ISIN
-        })
-
-    for i, fondo in enumerate(all_asignados):
-        pct    = int(fondo['peso'] * 100)
-        color  = COLORES[i % len(COLORES)] if fondo['isin'] != MONETARIO_ISIN else '#546e7a'
-        mom_r  = fondo.get('mom_relativo', 0)
-        mom_str = f"{fondo['momentum_12m']:+.1f}%" if fondo['momentum_12m'] is not None else "—"
-
-        col_n, col_p, col_m = st.columns([3, 1, 1])
-        with col_n:
-            st.markdown(f"<span style='color:#e8eaf6;font-size:14px'>{fondo['nombre']}</span>",
-                        unsafe_allow_html=True)
-            render_barra_peso(pct, color)
-        with col_p:
-            st.markdown(f"<span style='font-size:22px;font-weight:700;color:{color}'>{pct}%</span>",
-                        unsafe_allow_html=True)
-        with col_m:
-            mc = "#00c853" if (fondo['momentum_12m'] or 0) > mom_mon else "#546e7a"
-            st.markdown(f"<span style='font-size:13px;color:{mc}'>{mom_str}</span>",
-                        unsafe_allow_html=True)
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="info-box" style="margin-top:12px">
-    Pesos proporcionales al momentum relativo vs {MONETARIO_NOMBRE} ({mom_mon:.1f}%).
-    Tope máximo: {max_peso_pct}% por fondo. Redondeo al 5% más cercano.
-    </div>
-    """, unsafe_allow_html=True)
-
-# =============================================================================
-# MOMENTUM COMPARATIVO
-# =============================================================================
-
-st.markdown('<div class="section-title">Momentum 12 Meses — Comparativa</div>',
-            unsafe_allow_html=True)
-grafico_momentum_comparativo(todos, mom_mon)
-
-# =============================================================================
-# TABLA DETALLE DE FONDOS
-# =============================================================================
-
-st.markdown('<div class="section-title">Detalle de Fondos</div>', unsafe_allow_html=True)
-
-for fondo in todos:
-    estado  = fondo['estado']
-    sma_i   = fondo.get('sma_info', {})
-    peso    = fondo.get('peso', 0)
-    mom     = fondo.get('momentum_12m')
-    vol     = fondo.get('volatilidad')
-    dd      = fondo.get('max_drawdown')
-
-    es_seleccionado = estado == 'candidato'
-    clase = "fund-row selected" if es_seleccionado else "fund-row"
-
-    if estado == 'candidato':
-        estado_html = f'<span class="badge badge-green">✅ En cartera {int(peso*100)}%</span>'
-    elif estado == 'bajo_sma200':
-        estado_html = '<span class="badge badge-red">📉 Bajo SMA200</span>'
-    elif estado == 'monetario':
-        estado_html = '<span class="badge badge-amber">🛡️ No supera monetario</span>'
-    else:
-        estado_html = '<span class="badge badge-gray">⚠️ Sin datos</span>'
-
-    sma_color = "#00c853" if sma_i.get('sobre_sma', True) else "#ff5252"
-    sma_str   = f"{sma_i.get('dist_sma', 0):+.1f}%" if sma_i.get('sma200') else "—"
-    mom_color = "#00c853" if (mom or 0) > mom_mon else "#ff5252"
-    mom_str   = f"{mom:+.1f}%" if mom is not None else "—"
-    vol_str   = f"{vol:.0f}%" if vol else "—"
-    dd_str    = f"{dd:.1f}%" if dd else "—"
-    nav_str   = f"{sma_i.get('nav_actual', 0):.4f}" if sma_i.get('nav_actual') else "—"
-
-    st.markdown(f"""
-    <div class="{clase}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
-        <div>
-          <span style="font-size:16px;font-weight:600;color:#e8eaf6">{fondo['nombre']}</span>
-          <span style="font-size:11px;color:#37474f;margin-left:8px">{fondo['isin']}</span>
-          <div style="margin-top:6px">{estado_html}</div>
-        </div>
-        <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div style="text-align:center">
-            <div style="font-size:11px;color:#546e7a">Mom. 12m</div>
-            <div style="font-size:18px;font-weight:700;color:{mom_color}">{mom_str}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:#546e7a">Dist. SMA200</div>
-            <div style="font-size:18px;font-weight:700;color:{sma_color}">{sma_str}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:#546e7a">Vol. anual</div>
-            <div style="font-size:18px;font-weight:700;color:#90a4ae">{vol_str}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:#546e7a">Max DD 1a</div>
-            <div style="font-size:18px;font-weight:700;color:#ef9a9a">{dd_str}</div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:11px;color:#546e7a">NAV actual</div>
-            <div style="font-size:18px;font-weight:700;color:#e8eaf6">{nav_str}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# =============================================================================
-# GRÁFICOS NAV INDIVIDUALES
-# =============================================================================
-
-st.markdown('<div class="section-title">Evolución del NAV</div>', unsafe_allow_html=True)
-
-fondos_con_datos = [f for f in todos if f['nav'] is not None]
-if fondos_con_datos:
-    fondo_sel = st.selectbox(
-        "Seleccionar fondo",
-        options=[f['isin'] for f in fondos_con_datos],
-        format_func=lambda x: next((f['nombre'] for f in fondos_con_datos if f['isin'] == x), x),
-        key="sel_fondo_nav"
-    )
-    fondo_data = next(f for f in fondos_con_datos if f['isin'] == fondo_sel)
-    grafico_nav(fondo_data, nav_mon, mostrar_sma)
-
-    # Mostrar evolución multi-fondo normalizada
-    st.markdown("**Comparativa todos los fondos (base 100)**")
-    fig_multi = go.Figure()
-    for i, f in enumerate(fondos_con_datos):
-        nav = f['nav']
-        nav_norm = nav / nav.iloc[0] * 100
-        color = COLORES[i % len(COLORES)]
-        dash  = 'solid' if f['estado'] == 'candidato' else 'dot'
-        fig_multi.add_trace(go.Scatter(
-            x=nav_norm.index[-252:], y=nav_norm.values[-252:],
-            name=f['nombre'],
-            line=dict(color=color, width=2 if f['estado'] == 'candidato' else 1, dash=dash),
-            hovertemplate=f"{f['nombre']}: %{{y:.1f}}<extra></extra>"
-        ))
-    if nav_mon is not None:
-        mon_norm = nav_mon / nav_mon.iloc[0] * 100
-        fig_multi.add_trace(go.Scatter(
-            x=mon_norm.index[-252:], y=mon_norm.values[-252:],
-            name=MONETARIO_NOMBRE,
-            line=dict(color='#546e7a', width=1, dash='dot'),
-            hovertemplate=f"Monetario: %{{y:.1f}}<extra></extra>"
-        ))
-    fig_multi.update_layout(
-        template='plotly_dark',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(13,18,32,0.8)',
-        height=350,
-        margin=dict(t=20, b=20, l=0, r=0),
-        xaxis=dict(gridcolor='#1e2a40'),
-        yaxis=dict(gridcolor='#1e2a40', title='Base 100'),
-        legend=dict(orientation='h', y=1.08, font=dict(size=11)),
-        hovermode='x unified'
-    )
-    st.plotly_chart(fig_multi, use_container_width=True)
+    ---
+    ### Preguntas Frecuentes
+    **¿Cuándo se debe consultar?**  
+    La estrategia está diseñada para una revisión mensual, idealmente el primer lunes de cada mes. No es una estrategia de trading diario.
+    
+    **¿Qué significa el refugio monetario?**  
+    Si ningún fondo es apto o si sobra capital tras aplicar los límites de peso, ese porcentaje aparece asignado al fondo monetario (BNP EUR 3M), que actúa como "caja" o liquidez.
+    """)
 
 # =============================================================================
 # PIE
 # =============================================================================
 
 st.markdown("""
-<div style="text-align:center;padding:32px 0 16px;color:#263238;font-size:12px">
-  ⚠️ Esto no es asesoramiento financiero.<br>
-  Verifica siempre con tu entidad financiera antes de realizar cualquier operación.
+<div style="text-align:center;padding:32px 0 16px;color:#757575;font-size:12px;border-top:1px solid #eeeeee;margin-top:40px">
+  ⚠️ **Aviso Legal**: Esta herramienta es de carácter informativo y no constituye asesoramiento financiero.<br>
+  Verifica siempre la información con tu entidad financiera antes de invertir.
 </div>
 """, unsafe_allow_html=True)
