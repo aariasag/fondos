@@ -2,4 +2,5 @@ streamlit
 pandas
 numpy
 plotly
-mstarpy
+yfinance
+requests
