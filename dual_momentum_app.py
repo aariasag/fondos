@@ -11,6 +11,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import sys
+import requests
+import yfinance as yf
 
 # =============================================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -170,22 +172,38 @@ COLORES = ["#2979ff","#00c853","#ffa000","#e91e63","#00bcd4","#9c27b0","#ff5722"
 # FUNCIONES DE DATOS
 # =============================================================================
 
+def get_yahoo_ticker(isin: str) -> str | None:
+    url = f"https://query2.finance.yahoo.com/v1/finance/search"
+    params = {'q': isin, 'quotesCount': 5, 'newsCount': 0}
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        res = requests.get(url, params=params, headers=headers, timeout=5)
+        data = res.json()
+        if 'quotes' in data and len(data['quotes']) > 0:
+            return data['quotes'][0]['symbol']
+    except Exception:
+        pass
+    return None
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def descargar_nav(isin: str) -> pd.Series | None:
     try:
-        import mstarpy
-        end_date   = datetime.today()
-        start_date = end_date - timedelta(days=500)
-        fund = mstarpy.Funds(isin)
-        nav_data = fund.nav(start_date, end_date, frequency="daily")
-        if not nav_data:
+        ticker = get_yahoo_ticker(isin)
+        if not ticker:
             return None
-        df = pd.DataFrame(nav_data)
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.set_index('date').sort_index()
-        col = 'totalReturn' if 'totalReturn' in df.columns else 'nav'
-        return df[col].dropna().astype(float)
-    except Exception as e:
+            
+        fund = yf.Ticker(ticker)
+        hist = fund.history(period="2y")
+        if hist.empty:
+            return None
+            
+        # Asegurarnos de que el índice es datetime puro sin timezone
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_convert(None)
+            
+        df = hist.sort_index()
+        return df['Close'].dropna().astype(float)
+    except Exception:
         return None
 
 def calcular_momentum(nav: pd.Series, meses: int) -> float | None:
@@ -591,7 +609,7 @@ with col_btn:
 with col_info:
     st.markdown("""
     <div class="info-box">
-    Los datos se descargan de <b>Morningstar</b> en tiempo real.
+    Los datos se descargan de <b>Yahoo Finance</b> en tiempo real.
     La revisión se hace el <b>primer lunes de cada mes</b> — no antes.
     </div>
     """, unsafe_allow_html=True)
@@ -604,11 +622,11 @@ tab_dash, tab_doc = st.tabs(["📊 Dashboard de Cartera", "📖 Guía y Metodolo
 
 with tab_dash:
     if analizar:
-        with st.spinner("Descargando NAV histórico desde Morningstar..."):
+        with st.spinner("Descargando NAV histórico desde Yahoo Finance..."):
             try:
-                import mstarpy
+                import yfinance
             except ImportError:
-                st.error("❌ Instala mstarpy: `pip install mstarpy`")
+                st.error("❌ Instala yfinance: `pip install yfinance`")
                 st.stop()
 
             progreso = st.progress(0, text="Iniciando descarga...")
